@@ -452,6 +452,9 @@
             <div class="form-group">
                 <label for="channel">Nazwa Kanału (wymagane)</label>
                 <input type="text" id="channel" placeholder="np. twoj_nick" required>
+                <small style="color: #adadb8; font-size: 0.85em; display: block; margin-top: 8px;">
+                    Znaki podkreślenia (_) zostaną automatycznie zamienione na myślniki (-)
+                </small>
             </div>
 
             <div class="form-group">
@@ -584,6 +587,7 @@
                 <li>Automatyczne filtrowanie wiadomości botów</li>
                 <li>Kolejkowanie wiadomości</li>
                 <li>Komenda !skiptts dla broadcastera do pomijania aktualnego TTS</li>
+                <li>Automatyczna konwersja znaków podkreślenia (_) na myślniki (-) w nazwach kanałów</li>
             </ul>
         </div>
 
@@ -742,7 +746,7 @@
         }
 
         function generateURL() {
-            const channel = document.getElementById('channel').value.trim();
+            let channel = document.getElementById('channel').value.trim();
             const voice = document.getElementById('voice').value;
             const speed = document.getElementById('speed').value;
             const volume = document.getElementById('volume').value;
@@ -762,6 +766,9 @@
                 alert('Proszę podać nazwę kanału!');
                 return;
             }
+
+            // Zamień wszystkie _ na -
+            channel = channel.replace(/_/g, '-');
 
             const baseUrl = window.location.origin + window.location.pathname;
             let url = baseUrl + '?channel=' + encodeURIComponent(channel);
@@ -797,7 +804,7 @@
         }
 
         function initTTS() {
-            const kick = urlParams.get('channel') || 'twoj-nick';
+            const kick = urlParams.get('channel') || 'twoj_nick';
             
             const voices = {
                 'Agatka': { EID: '4', LID: '14', VID: '1', type: 'oddcast' },
