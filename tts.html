@@ -585,7 +585,7 @@
                 <li>Opcjonalne wymaganie przedrostka "tts"</li>
                 <li>Kontrola głośności 0-100</li>
                 <li>Automatyczne filtrowanie wiadomości botów</li>
-                <li>Kolejkowanie wiadomości</li>
+                <li>Perfekcyjne kolejkowanie wiadomości FIFO</li>
                 <li>Komenda !skiptts dla broadcastera do pomijania aktualnego TTS</li>
             </ul>
         </div>
@@ -843,11 +843,155 @@
                 'casterlabs', 'ayybabz', 'babblechat'
             ];
 
-            const chat = new WebSocket('wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false');
-            let isPlaying = false;
+            // ===============================================
+            // NOWY SYSTEM KOLEJKOWANIA WIADOMOŚCI
+            // ===============================================
+            const messageQueue = [];
+            let isProcessingQueue = false;
             let audio = null;
             let speechSynthesis = window.speechSynthesis;
             let currentUtterance = null;
+
+            // Funkcja do odtwarzania pojedynczej wiadomości TTS
+            async function playTTSSingle(text, volumeLevel, speedValue) {
+                const cleanText = text.replace(/%/g, 'percent');
+                
+                try {
+                    if (selectedVoice.type === 'webspeech') {
+                        // Use Web Speech API for Microsoft voices
+                        console.log('Playing with Web Speech API');
+                        
+                        return new Promise((resolve) => {
+                            const utterance = new SpeechSynthesisUtterance(cleanText);
+                            currentUtterance = utterance;
+                            
+                            const availableVoices = speechSynthesis.getVoices();
+                            const voice = availableVoices.find(v => 
+                                v.name.includes('Adam') || 
+                                v.name.includes('pl-PL')
+                            );
+                            
+                            if (voice) {
+                                utterance.voice = voice;
+                            }
+                            
+                            utterance.volume = volumeLevel / 100;
+                            utterance.rate = Math.pow(2, speedValue / 3);
+                            utterance.lang = 'pl-PL';
+                            
+                            utterance.onend = () => {
+                                currentUtterance = null;
+                                console.log('TTS ended (Web Speech API)');
+                                resolve();
+                            };
+                            
+                            utterance.onerror = (e) => {
+                                console.error('Speech synthesis error:', e);
+                                currentUtterance = null;
+                                resolve();
+                            };
+                            
+                            speechSynthesis.speak(utterance);
+                        });
+                    } else {
+                        // Use Oddcast TTS
+                        const ttsVoiceEID = selectedVoice.EID;
+                        const ttsVoiceLID = selectedVoice.LID;
+                        const ttsVoiceVID = selectedVoice.VID;
+                        
+                        let ttsUrl = 'https://cache-a.oddcast.com/tts/genC.php?EID=' + ttsVoiceEID + '&LID=' + ttsVoiceLID + '&VID=' + ttsVoiceVID + '&TXT=' + encodeURIComponent(cleanText);
+                        
+                        if (speedValue !== 0) {
+                            const reversedSpeed = -speedValue;
+                            ttsUrl += '&FX_TYPE=D&FX_LEVEL=' + reversedSpeed;
+                        }
+
+                        console.log('Playing with Oddcast TTS');
+
+                        return new Promise((resolve, reject) => {
+                            audio = new Audio(ttsUrl);
+                            audio.volume = volumeLevel / 100;
+                            
+                            audio.addEventListener('ended', function() {
+                                audio = null;
+                                console.log('TTS ended (Oddcast)');
+                                resolve();
+                            });
+
+                            audio.addEventListener('error', function(e) {
+                                console.error('Audio error:', e);
+                                audio = null;
+                                reject(e);
+                            });
+
+                            audio.play().catch(err => {
+                                console.error('Play error:', err);
+                                audio = null;
+                                reject(err);
+                            });
+                        });
+                    }
+                } catch (error) {
+                    console.error('TTS error:', error);
+                    throw error;
+                }
+            }
+
+            // Główna funkcja przetwarzająca kolejkę
+            async function processQueue() {
+                if (isProcessingQueue) {
+                    console.log('Queue processor already running');
+                    return;
+                }
+
+                isProcessingQueue = true;
+                console.log('Queue processor started');
+
+                while (messageQueue.length > 0) {
+                    const message = messageQueue.shift();
+                    console.log('Processing message from queue:', message.text.substring(0, 50) + '...');
+                    console.log('Messages remaining in queue:', messageQueue.length);
+
+                    try {
+                        await playTTSSingle(message.text, message.volume, message.speed);
+                    } catch (error) {
+                        console.error('Error playing TTS:', error);
+                    }
+                }
+
+                isProcessingQueue = false;
+                console.log('Queue processor finished');
+            }
+
+            // Funkcja dodająca wiadomość do kolejki
+            function addToQueue(text, volumeLevel, speedValue) {
+                messageQueue.push({
+                    text: text,
+                    volume: volumeLevel,
+                    speed: speedValue
+                });
+                console.log('Added to queue. Queue length:', messageQueue.length);
+                
+                // Uruchom procesor kolejki jeśli nie jest aktywny
+                if (!isProcessingQueue) {
+                    processQueue();
+                }
+            }
+
+            // Funkcja do pomijania aktualnego TTS
+            function skipCurrentTTS() {
+                console.log('Skipping current TTS');
+                if (audio) {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    audio = null;
+                }
+                if (currentUtterance) {
+                    speechSynthesis.cancel();
+                    currentUtterance = null;
+                }
+            }
+            // ===============================================
 
             function hasBroadcasterBadge(badges) {
                 return badges && badges.some(badge => badge.type === 'broadcaster');
@@ -868,108 +1012,6 @@
                 } catch (error) {
                     console.error('Follower check error:', error);
                     return false;
-                }
-            }
-
-            async function playTTS(text, volumeLevel, speedValue) {
-                const cleanText = text.replace(/%/g, 'percent');
-                
-                try {
-                    if (isPlaying) {
-                        console.log('TTS is playing, waiting...');
-                        await new Promise(resolve => {
-                            const interval = setInterval(() => {
-                                if (!isPlaying) {
-                                    clearInterval(interval);
-                                    resolve();
-                                }
-                            }, 500);
-                        });
-                    }
-
-                    isPlaying = true;
-
-                    if (selectedVoice.type === 'webspeech') {
-                        // Use Web Speech API for Microsoft voices
-                        console.log('Using Web Speech API for:', voiceName);
-                        
-                        return new Promise((resolve) => {
-                            const utterance = new SpeechSynthesisUtterance(cleanText);
-                            currentUtterance = utterance;
-                            
-                            // Find the voice
-                            const availableVoices = speechSynthesis.getVoices();
-                            const voice = availableVoices.find(v => 
-                                v.name.includes('Adam') || 
-                                v.name.includes('pl-PL')
-                            );
-                            
-                            if (voice) {
-                                utterance.voice = voice;
-                            }
-                            
-                            utterance.volume = volumeLevel / 100;
-                            
-                            // Poprawione mapowanie - odwrócone aby działało jak Oddcast:
-                            // speedValue: -3 do 3 w UI
-                            // rate: 0.5 (wolniej) do 2.0 (szybciej)
-                            utterance.rate = Math.pow(2, speedValue / 3);
-                            
-                            utterance.lang = 'pl-PL';
-                            
-                            console.log('Web Speech API - Speed:', speedValue, 'Rate:', utterance.rate);
-                            
-                            utterance.onend = () => {
-                                isPlaying = false;
-                                currentUtterance = null;
-                                console.log('TTS ended');
-                                resolve();
-                            };
-                            
-                            utterance.onerror = (e) => {
-                                console.error('Speech synthesis error:', e);
-                                isPlaying = false;
-                                currentUtterance = null;
-                                resolve();
-                            };
-                            
-                            speechSynthesis.speak(utterance);
-                            console.log('TTS playing (Web Speech API)');
-                        });
-                    } else {
-                        // Use Oddcast TTS
-                        const ttsVoiceEID = selectedVoice.EID;
-                        const ttsVoiceLID = selectedVoice.LID;
-                        const ttsVoiceVID = selectedVoice.VID;
-                        
-                        let ttsUrl = 'https://cache-a.oddcast.com/tts/genC.php?EID=' + ttsVoiceEID + '&LID=' + ttsVoiceLID + '&VID=' + ttsVoiceVID + '&TXT=' + encodeURIComponent(cleanText);
-                        
-                        if (speedValue !== 0) {
-                            const reversedSpeed = -speedValue;
-                            ttsUrl += '&FX_TYPE=D&FX_LEVEL=' + reversedSpeed;
-                        }
-
-                        console.log('Using Oddcast TTS');
-
-                        audio = new Audio(ttsUrl);
-                        audio.volume = volumeLevel / 100;
-                        
-                        audio.addEventListener('ended', function() {
-                            isPlaying = false;
-                            console.log('TTS ended');
-                        });
-
-                        audio.addEventListener('error', function(e) {
-                            console.error('Audio error:', e);
-                            isPlaying = false;
-                        });
-
-                        await audio.play();
-                        console.log('TTS playing (Oddcast)');
-                    }
-                } catch (error) {
-                    console.error('TTS error:', error);
-                    isPlaying = false;
                 }
             }
 
@@ -997,6 +1039,8 @@
                     console.log('Available voices:', voices.map(v => v.name));
                 };
             }
+
+            const chat = new WebSocket('wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false');
 
             chat.addEventListener('open', async () => {
                 console.log('Connecting to Kick...');
@@ -1036,15 +1080,7 @@
                 // Handle !skiptts command from broadcaster
                 if (isBroadcaster && content.toLowerCase().trim() === '!skiptts') {
                     console.log('Broadcaster skipped TTS');
-                    if (audio) {
-                        audio.pause();
-                        audio.currentTime = 0;
-                    }
-                    if (currentUtterance) {
-                        speechSynthesis.cancel();
-                        currentUtterance = null;
-                    }
-                    isPlaying = false;
+                    skipCurrentTTS();
                     return;
                 }
 
@@ -1097,7 +1133,8 @@
                         textToSpeak = username + ' mówi: ' + textToSpeak;
                     }
 
-                    await playTTS(textToSpeak, volume, speed);
+                    // Dodaj do kolejki zamiast bezpośrednio odtwarzać
+                    addToQueue(textToSpeak, volume, speed);
                 } else {
                     console.log('User ' + username + ' has no permission');
                 }
