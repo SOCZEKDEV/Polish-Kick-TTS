@@ -395,6 +395,17 @@
             height: 35px;
         }
 
+        .voice-badge {
+            display: inline-block;
+            background: rgba(83, 252, 24, 0.15);
+            color: #53fc18;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2em;
@@ -446,11 +457,16 @@
             <div class="form-group">
                 <label for="voice">Głos</label>
                 <select id="voice">
-                    <option value="Zosia">Zosia (Kobieta - Domyślny)</option>
-                    <option value="Agatka">Agatka (Kobieta)</option>
-                    <option value="Danota">Danota (Kobieta)</option>
-                    <option value="Krzysztof">Krzysztof (Mężczyzna)</option>
-                    <option value="Wojciech">Wojciech (Mężczyzna)</option>
+                    <optgroup label="Oddcast TTS">
+                        <option value="Zosia">Zosia (Kobieta - Domyślny)</option>
+                        <option value="Agatka">Agatka (Kobieta)</option>
+                        <option value="Danota">Danota (Kobieta)</option>
+                        <option value="Krzysztof">Krzysztof (Mężczyzna)</option>
+                        <option value="Wojciech">Wojciech (Mężczyzna)</option>
+                    </optgroup>
+                    <optgroup label="Microsoft TTS">
+                        <option value="Adam">Adam (Mężczyzna - Microsoft)</option>
+                    </optgroup>
                 </select>
             </div>
 
@@ -558,7 +574,7 @@
                 Funkcje
             </h2>
             <ul>
-                <li>5 polskich głosów (męskich i żeńskich)</li>
+                <li>6 polskich głosów (męskich i żeńskich) - Oddcast + Microsoft TTS</li>
                 <li>Regulacja prędkości mowy od -3 (szybciej) do +3 (wolniej)</li>
                 <li>Opcja czytania nicku użytkownika przed wiadomością</li>
                 <li>Opcjonalne czytanie linków i emotek (domyślnie wyłączone)</li>
@@ -583,22 +599,32 @@
                 <div class="voice-card">
                     <div class="voice-name">Zosia</div>
                     <div class="voice-type">Kobieta</div>
+                    <div class="voice-badge">Oddcast</div>
                 </div>
                 <div class="voice-card">
                     <div class="voice-name">Agatka</div>
                     <div class="voice-type">Kobieta</div>
+                    <div class="voice-badge">Oddcast</div>
                 </div>
                 <div class="voice-card">
                     <div class="voice-name">Danota</div>
                     <div class="voice-type">Kobieta</div>
+                    <div class="voice-badge">Oddcast</div>
                 </div>
                 <div class="voice-card">
                     <div class="voice-name">Krzysztof</div>
                     <div class="voice-type">Mężczyzna</div>
+                    <div class="voice-badge">Oddcast</div>
                 </div>
                 <div class="voice-card">
                     <div class="voice-name">Wojciech</div>
                     <div class="voice-type">Mężczyzna</div>
+                    <div class="voice-badge">Oddcast</div>
+                </div>
+                <div class="voice-card">
+                    <div class="voice-name">Adam</div>
+                    <div class="voice-type">Mężczyzna</div>
+                    <div class="voice-badge">Microsoft</div>
                 </div>
             </div>
         </div>
@@ -631,7 +657,7 @@
             <p>Nazwa Twojego kanału Kick.com</p>
 
             <h3><code>voice</code> (opcjonalne)</h3>
-            <p>Nazwa głosu: Zosia, Agatka, Danota, Krzysztof, Wojciech</p>
+            <p>Nazwa głosu: Zosia, Agatka, Danota, Krzysztof, Wojciech, Adam</p>
             <p>Domyślnie: Zosia</p>
 
             <h3><code>speed</code> (opcjonalne)</h3>
@@ -774,18 +800,16 @@
             const kick = urlParams.get('channel') || 'igor_ovh';
             
             const voices = {
-                'Agatka': { EID: '4', LID: '14', VID: '1' },
-                'Danota': { EID: '7', LID: '14', VID: '1' },
-                'Krzysztof': { EID: '2', LID: '14', VID: '2' },
-                'Wojciech': { EID: '7', LID: '14', VID: '2' },
-                'Zosia': { EID: '2', LID: '14', VID: '1' }
+                'Agatka': { EID: '4', LID: '14', VID: '1', type: 'oddcast' },
+                'Danota': { EID: '7', LID: '14', VID: '1', type: 'oddcast' },
+                'Krzysztof': { EID: '2', LID: '14', VID: '2', type: 'oddcast' },
+                'Wojciech': { EID: '7', LID: '14', VID: '2', type: 'oddcast' },
+                'Zosia': { EID: '2', LID: '14', VID: '1', type: 'oddcast' },
+                'Adam': { name: 'Microsoft Adam - Polish (Poland)', type: 'webspeech' }
             };
 
             const voiceName = urlParams.get('voice') || 'Zosia';
             const selectedVoice = voices[voiceName] || voices['Zosia'];
-            const ttsVoiceEID = selectedVoice.EID;
-            const ttsVoiceLID = selectedVoice.LID;
-            const ttsVoiceVID = selectedVoice.VID;
             
             const volume = parseInt(urlParams.get('volume')) || 80;
             const speed = parseInt(urlParams.get('speed')) || 0;
@@ -819,6 +843,8 @@
             const chat = new WebSocket('wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false');
             let isPlaying = false;
             let audio = null;
+            let speechSynthesis = window.speechSynthesis;
+            let currentUtterance = null;
 
             function hasBroadcasterBadge(badges) {
                 return badges && badges.some(badge => badge.type === 'broadcaster');
@@ -845,17 +871,6 @@
             async function playTTS(text, volumeLevel, speedValue) {
                 const cleanText = text.replace(/%/g, 'percent');
                 
-                // Build TTS URL - odwrócona wartość speed
-                let ttsUrl = 'https://cache-a.oddcast.com/tts/genC.php?EID=' + ttsVoiceEID + '&LID=' + ttsVoiceLID + '&VID=' + ttsVoiceVID + '&TXT=' + encodeURIComponent(cleanText);
-                
-                // Odwrócenie wartości: ujemne w UI = dodatnie w API (wolniej), dodatnie w UI = ujemne w API (szybciej)
-                if (speedValue !== 0) {
-                    const reversedSpeed = -speedValue;
-                    ttsUrl += '&FX_TYPE=D&FX_LEVEL=' + reversedSpeed;
-                }
-
-                console.log('Playing TTS:', cleanText);
-
                 try {
                     if (isPlaying) {
                         console.log('TTS is playing, waiting...');
@@ -870,21 +885,85 @@
                     }
 
                     isPlaying = true;
-                    audio = new Audio(ttsUrl);
-                    audio.volume = volumeLevel / 100;
-                    
-                    audio.addEventListener('ended', function() {
-                        isPlaying = false;
-                        console.log('TTS ended');
-                    });
 
-                    audio.addEventListener('error', function(e) {
-                        console.error('Audio error:', e);
-                        isPlaying = false;
-                    });
+                    if (selectedVoice.type === 'webspeech') {
+                        // Use Web Speech API for Microsoft voices
+                        console.log('Using Web Speech API for:', voiceName);
+                        
+                        return new Promise((resolve) => {
+                            const utterance = new SpeechSynthesisUtterance(cleanText);
+                            currentUtterance = utterance;
+                            
+                            // Find the voice
+                            const availableVoices = speechSynthesis.getVoices();
+                            const voice = availableVoices.find(v => 
+                                v.name.includes('Adam') || 
+                                v.name.includes('pl-PL')
+                            );
+                            
+                            if (voice) {
+                                utterance.voice = voice;
+                            }
+                            
+                            utterance.volume = volumeLevel / 100;
+                            
+                            // Poprawione mapowanie - odwrócone aby działało jak Oddcast:
+                            // speedValue: -3 do 3 w UI
+                            // rate: 0.5 (wolniej) do 2.0 (szybciej)
+                            utterance.rate = Math.pow(2, speedValue / 3);
+                            
+                            utterance.lang = 'pl-PL';
+                            
+                            console.log('Web Speech API - Speed:', speedValue, 'Rate:', utterance.rate);
+                            
+                            utterance.onend = () => {
+                                isPlaying = false;
+                                currentUtterance = null;
+                                console.log('TTS ended');
+                                resolve();
+                            };
+                            
+                            utterance.onerror = (e) => {
+                                console.error('Speech synthesis error:', e);
+                                isPlaying = false;
+                                currentUtterance = null;
+                                resolve();
+                            };
+                            
+                            speechSynthesis.speak(utterance);
+                            console.log('TTS playing (Web Speech API)');
+                        });
+                    } else {
+                        // Use Oddcast TTS
+                        const ttsVoiceEID = selectedVoice.EID;
+                        const ttsVoiceLID = selectedVoice.LID;
+                        const ttsVoiceVID = selectedVoice.VID;
+                        
+                        let ttsUrl = 'https://cache-a.oddcast.com/tts/genC.php?EID=' + ttsVoiceEID + '&LID=' + ttsVoiceLID + '&VID=' + ttsVoiceVID + '&TXT=' + encodeURIComponent(cleanText);
+                        
+                        if (speedValue !== 0) {
+                            const reversedSpeed = -speedValue;
+                            ttsUrl += '&FX_TYPE=D&FX_LEVEL=' + reversedSpeed;
+                        }
 
-                    await audio.play();
-                    console.log('TTS playing');
+                        console.log('Using Oddcast TTS');
+
+                        audio = new Audio(ttsUrl);
+                        audio.volume = volumeLevel / 100;
+                        
+                        audio.addEventListener('ended', function() {
+                            isPlaying = false;
+                            console.log('TTS ended');
+                        });
+
+                        audio.addEventListener('error', function(e) {
+                            console.error('Audio error:', e);
+                            isPlaying = false;
+                        });
+
+                        await audio.play();
+                        console.log('TTS playing (Oddcast)');
+                    }
                 } catch (error) {
                     console.error('TTS error:', error);
                     isPlaying = false;
@@ -906,6 +985,14 @@
                     return hasPermission;
                 }
                 return false;
+            }
+
+            // Load voices for Web Speech API
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = () => {
+                    const voices = speechSynthesis.getVoices();
+                    console.log('Available voices:', voices.map(v => v.name));
+                };
             }
 
             chat.addEventListener('open', async () => {
@@ -949,6 +1036,10 @@
                     if (audio) {
                         audio.pause();
                         audio.currentTime = 0;
+                    }
+                    if (currentUtterance) {
+                        speechSynthesis.cancel();
+                        currentUtterance = null;
                     }
                     isPlaying = false;
                     return;
