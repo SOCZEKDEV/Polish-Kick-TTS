@@ -453,7 +453,7 @@
                 <label for="channel">Nazwa Kanału (wymagane)</label>
                 <input type="text" id="channel" placeholder="np. twoj_nick" required>
                 <small style="color: #adadb8; font-size: 0.85em; display: block; margin-top: 8px;">
-                    Znaki podkreślenia (_) zostaną automatycznie zamienione na myślniki (-)
+                    Wielkie litery zostaną zamienione na małe, a znaki podkreślenia (_) na myślniki (-)
                 </small>
             </div>
 
@@ -587,7 +587,7 @@
                 <li>Automatyczne filtrowanie wiadomości botów</li>
                 <li>Kolejkowanie wiadomości</li>
                 <li>Komenda !skiptts dla broadcastera do pomijania aktualnego TTS</li>
-                <li>Automatyczna konwersja znaków podkreślenia (_) na myślniki (-) w nazwach kanałów</li>
+                <li>Automatyczna konwersja nazw kanałów (wielkie litery → małe, _ → -)</li>
             </ul>
         </div>
 
@@ -767,8 +767,8 @@
                 return;
             }
 
-            // Zamień wszystkie _ na -
-            channel = channel.replace(/_/g, '-');
+            // Zamień wszystkie _ na - i zamień na małe litery
+            channel = channel.toLowerCase().replace(/_/g, '-');
 
             const baseUrl = window.location.origin + window.location.pathname;
             let url = baseUrl + '?channel=' + encodeURIComponent(channel);
@@ -804,7 +804,7 @@
         }
 
         function initTTS() {
-            const kick = urlParams.get('channel') || 'twoj_nick';
+            const kick = urlParams.get('channel') || 'igor_ovh';
             
             const voices = {
                 'Agatka': { EID: '4', LID: '14', VID: '1', type: 'oddcast' },
@@ -913,12 +913,7 @@
                             }
                             
                             utterance.volume = volumeLevel / 100;
-                            
-                            // Poprawione mapowanie - odwrócone aby działało jak Oddcast:
-                            // speedValue: -3 do 3 w UI
-                            // rate: 0.5 (wolniej) do 2.0 (szybciej)
                             utterance.rate = Math.pow(2, speedValue / 3);
-                            
                             utterance.lang = 'pl-PL';
                             
                             console.log('Web Speech API - Speed:', speedValue, 'Rate:', utterance.rate);
